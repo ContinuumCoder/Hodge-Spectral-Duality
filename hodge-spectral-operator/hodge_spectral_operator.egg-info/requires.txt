@@ -1,0 +1,10 @@
+torch>=2.0
+numpy>=1.24
+scipy>=1.10
+scikit-learn>=1.2
+toponetx>=0.3
+pyvista>=0.40
+
+[dev]
+pytest
+matplotlib

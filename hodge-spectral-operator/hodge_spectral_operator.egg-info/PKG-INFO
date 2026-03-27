@@ -1,0 +1,89 @@
+Metadata-Version: 2.4
+Name: hodge-spectral-operator
+Version: 0.1.0
+Summary: Neural operator learning on manifolds with Hodge decomposition inductive bias
+Author: HSD Team
+License: MIT
+Keywords: neural-operator,hodge-decomposition,spectral-methods,manifold-learning,physics-informed
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Science/Research
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Topic :: Scientific/Engineering :: Mathematics
+Classifier: Topic :: Scientific/Engineering :: Physics
+Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+Requires-Dist: torch>=2.0
+Requires-Dist: numpy>=1.24
+Requires-Dist: scipy>=1.10
+Requires-Dist: scikit-learn>=1.2
+Requires-Dist: toponetx>=0.3
+Requires-Dist: pyvista>=0.40
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"
+Requires-Dist: matplotlib; extra == "dev"
+
+# Hodge Spectral Operator (HSO)
+
+Neural operator learning on manifolds with Hodge decomposition inductive bias.
+
+## Features
+
+- **Any geometric input**: mesh, point cloud, or graph
+- **Any differential form task**: 0-form→0-form, 0-form→1-form, etc.
+- **Hodge inductive bias**: de Rham cross-form operators as physics priors
+- **Spectral bilinear layers**: pseudo-spectral quadratic nonlinearity
+- **Adaptive dual-branch**: neural gating between spectral and spatial
+- **One-line API**: `model.fit(X, Y)` / `model.predict(X_new)`
+
+## Quick Start
+
+```python
+from hodge_spectral import HodgeOperator
+
+# From mesh
+model = HodgeOperator.from_mesh(points, faces, task="0to1", k=64)
+model.fit(X_train, Y_train, epochs=100)
+Y_pred = model.predict(X_test)
+metrics = model.evaluate(X_test, Y_test)
+
+# From point cloud (auto-triangulates)
+model = HodgeOperator.from_pointcloud(points, task="0to0")
+
+# From graph
+model = HodgeOperator.from_graph(edge_index, n_nodes, positions, task="0to1")
+```
+
+## Install
+
+```bash
+pip install hodge-spectral-operator
+```
+
+## Architecture
+
+```
+Input → Spectral Lift (Φ₀, Φ₁, Φ₂)
+  ↓
+De Rham cross-terms: div(c₁), grad(c₀)
+  ↓
+SpectralBilinearLayer: linear + c₀⊙δ(c₁), c₁⊙d(c₀)
+  ↓
+┌─ Spectral Branch → Φ₀ coefficients → decode ─┐
+│                                                │
+├─ Spatial Branch → direct N-dim residual ───────┤
+│                                                │
+├─ Neural Gate → adaptive α(x) mixing ──────────┤
+│                                                │
+└─ Commutator → base/res disagreement fix ──────┘
+  ↓
+Output prediction
+```
+
+## Benchmarks
+
+| Task | HSD | FNO | DeepONet |
+|------|-----|-----|---------|
+| Ellipsoid Aero (0→vec) | **0.025** | 0.259 | 0.113 |
+| Torus Helmholtz (0→vec) | **0.049** | 0.418 | 0.277 |
