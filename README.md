@@ -217,14 +217,14 @@ The Hodge basis encodes topology via boundary operators B₁, B₂ — **14-17% 
 
 ### Ablation 5: Hodge Spectral Component Decomposition
 
-分别仅使用 Hodge 谱中的 harmonic、exact（gradient）和 coexact（curl）部分。其中 exact 和 coexact 通道分别通过将 boundary / co-boundary operator 作用于 k-1 和 k+1 维的低频谱构造，验证这三部分提供的是互补信息。
+Isolating the three orthogonal components of the Hodge decomposition $\Omega^1 = \mathrm{im}(d_0) \oplus \mathrm{im}(\delta_1) \oplus \ker(\Delta_1)$. The exact (gradient) channel is constructed as $\hat{c}0 \cdot M{d_0}^\top$, where $M_{d_0} = \Phi_1^\top B_1 \Phi_0$ applies the boundary operator $B_1$ to the low-frequency 0-form eigenbasis $\Phi_0$, projecting the input into the curl-free subspace. The coexact (curl) channel is constructed via the co-boundary operator $B_2^\top$ applied to the low-frequency 2-form eigenbasis $\Phi_2$, capturing the divergence-free subspace. The harmonic channel retains only the near-zero eigenvalue modes of $\Delta_0$ ($\lambda < 10^{-6}$), encoding global topological structure. Results confirm that the three components provide complementary, non-redundant spectral information.
 
 | Task | Full Hodge | Exact only | Coexact only | Harmonic only |
 |------|------------|------------|--------------|---------------|
 | Ellipsoid | **0.084** | 0.113 | 0.338 | 1.002 |
 | Torus | **0.475** | 0.995 | 0.483 | 1.003 |
 
-#### Key Findings
+#### Findings
 
 1. **No single Hodge component suffices.** Harmonic-only diverges on both tasks (rel L2 > 1.0). Exact-only collapses on the coexact-dominated Torus (0.995). Coexact-only collapses on the exact-dominated Ellipsoid (0.338). Only the full spectrum succeeds on both.
 
