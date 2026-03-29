@@ -1,0 +1,22 @@
+{
+  "ellipsoid_aero_layer": {
+    "plain_mlp": {
+      "relative_l2": 0.036627981811761856,
+      "params": 2295404
+    },
+    "pseudo_spectral_bilinear": {
+      "relative_l2": 0.036111313849687576,
+      "params": 2295404
+    }
+  },
+  "torus_helmholtz_layer": {
+    "plain_mlp": {
+      "relative_l2": 0.058137379586696625,
+      "params": 1609498
+    },
+    "pseudo_spectral_bilinear": {
+      "relative_l2": 0.05805348604917526,
+      "params": 1609498
+    }
+  }
+}

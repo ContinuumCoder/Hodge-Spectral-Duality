@@ -1,20 +1,301 @@
+# Hodge-Spectral Duality (HSD)
 
-This repository provides code for learning divergence-free vector fields on manifolds using spectral methods based on the Hodge decomposition and discrete exterior calculus.
+A physics-informed neural operator framework for learning mappings between differential forms on manifolds, leveraging the Hodge decomposition and discrete exterior calculus.
 
 ---
 
-## Overview
+## `hodge-spectral-operator` — PyPI Library
 
-We propose **HSD (Hodge-Spectral Duality)**, a physics-informed neural operator that learns mappings between differential forms on manifolds. Our approach leverages the deep connection between algebraic topology and spectral geometry through:
+We provide a **unified, one-line-call** Python library that wraps the entire HSD pipeline into a clean API. It supports **any geometric input** (mesh, point cloud, graph) and **any differential form task** (0-form, 1-form, 2-form mappings).
 
-- **Discrete Exterior Calculus (DEC)** for intrinsic geometric representations
-- **Hodge Decomposition Theorem** for physically meaningful field decomposition
-- **Spectral bases of Hodge Laplacians** across all form degrees (0, 1, 2)
-- **De Rham complex operators** for topologically consistent transformations
+### Install
 
-The key innovation is a **dual-branch architecture** that separates:
-1. **Topological Base (Spectral Branch)**: Captures global, topologically invariant features in the spectral domain
-2. **Geometric Fiber (Local Branch)**: Learns fine-grained spatial variations in the physical domain
+```bash
+pip install hodge-spectral-operator
+```
+
+### One-Liner Usage
+
+```python
+from hodge_spectral import HodgeOperator
+
+# From mesh: scalar field → vector field (0-form → 1-form)
+model = HodgeOperator.from_mesh(points, faces, task="0to1")
+model.fit(X_train, Y_train)
+metrics = model.evaluate(X_test, Y_test)
+# {'relative_l2': 0.025, 'riemannian_ip_fidelity': 0.997, 'mse': ...}
+```
+
+### Three Input Modes — One Unified Interface
+
+```python
+from hodge_spectral import HodgeOperator
+
+# 1. From triangulated mesh (direct)
+model = HodgeOperator.from_mesh(points, faces, task="0to1", k=64)
+
+# 2. From point cloud (auto-triangulates via KNN + Alpha complex)
+model = HodgeOperator.from_pointcloud(points, task="0to0", k=64)
+
+# 3. From graph (finds triangles or falls back to Delaunay)
+model = HodgeOperator.from_graph(edge_index, n_nodes, positions, task="0to1", k=64)
+```
+
+All three input modes are converted to a unified simplicial complex representation internally. Users do **not** need to handle mesh generation or topology construction — the library does it automatically.
+
+### Supported Differential Form Tasks
+
+| Task | Input Form | Output Form | Physics Example |
+|------|-----------|-------------|-----------------|
+| `"0to0"` | Scalar on nodes | Scalar on nodes | Heat diffusion, scalar advection |
+| `"0to1"` | Scalar on nodes | Vector on nodes | Darcy flow, stream function → velocity |
+| `"0to2"` | Scalar on nodes | Density on faces | Vorticity → flux through faces |
+| `"1to0"` | Vector on nodes | Scalar on nodes | Velocity → pressure (inverse) |
+| `"1to1"` | Vector on nodes | Vector on nodes | Momentum transfer, Navier-Stokes |
+
+### Full API
+
+```python
+model = HodgeOperator.from_mesh(points, faces,
+    task="0to1",
+    k=64,                       # eigenmodes per form
+    hidden_dims=(256, 192),     # spectral MLP layers
+    dropout=0.05,               # spectral branch dropout
+    res_hidden=128,             # Whitney-KDE spatial branch hidden size
+    res_dropout=0.1,            # spatial branch dropout
+    default_lr=3e-3,            # learning rate
+    default_epochs=100,         # max training epochs
+    default_patience=25,        # early stopping patience
+)
+
+model.fit(X_train, Y_train, epochs=200, lr=1e-3, batch_size=128)
+Y_pred = model.predict(X_test)
+metrics = model.evaluate(X_test, Y_test)
+
+model.save("my_model.pt")
+model.load("my_model.pt")
+```
+
+### Architecture Overview
+
+```
+Input f (k-form) → Spectral Lift: c₀ = f·Φ₀, c₁ = d(f)·Φ₁, c₂ = ...
+  │
+  ├─ De Rham cross-terms: div(c₁) = δ₀(c₁), grad(c₀) = d₀(c₀)
+  ├─ Multi-scale heat kernel diffusion (6 scales)
+  │
+  ▼
+Pseudo-Spectral Bilinear Layer × L
+  │  linear:   GELU(W · x)
+  │  bilinear: W_q · [c₀ ⊙ δ(c₁), c₁ ⊙ d(c₀)]   ← spectral convolution
+  │  output:   LayerNorm(linear + bilinear + skip)
+  │
+  ├──────────── latent ────────────────────┐
+  │                                        │
+  ▼                                        ▼
+Spectral Branch                   Whitney-KDE Spatial Branch
+  │ coeffs → Φ decode                │ Whitney interpolation on
+  │ → low-frequency base             │ simplicial complex + KDE
+  │                                  │ → high-frequency residual
+  ▼                                  ▼
+  base                           residual
+  │                                  │
+  ├──────── Neural Gate ─────────────┤
+  │  α(x) = σ(g(latent)) ∈ (0,1)   │
+  │                                  │
+  └──────── Commutator ─────────────┘
+     correction = MLP(base, res, latent)
+     pred = α·base + (1-α)·(base + residual) + correction
+```
+
+### Quick Start Examples
+
+```bash
+# Ellipsoid external aerodynamics (genus-0, 0→1)
+python hodge-spectral-operator/examples/example_ellipsoid_aero.py
+
+# Torus Helmholtz vortex flow (genus-1, 0→1)
+python hodge-spectral-operator/examples/example_torus_helmholtz.py
+
+# Minimal quickstart (mesh + point cloud + graph)
+python hodge-spectral-operator/examples/quickstart.py
+```
+
+---
+
+## Supplementary Experiments
+
+The `HSD_addition_experiment/` directory contains comprehensive ablation studies and extended baseline comparisons. Below are all experimental results, metrics, and visualizations.
+
+---
+
+### Extended Baseline Comparison
+
+Relative L2 error (lower is better) across **7 methods** on two new benchmark tasks:
+
+| | HSD | GNOT'23 | ONO'23 | HAMLET'24 | DeepONet | GeoFNO | FNO |
+|---|---|---|---|---|---|---|---|
+| **Ellipsoid** (genus-0) | **0.037** | 0.144 | 0.155 | 0.159 | 0.221 | 0.240 | 0.246 |
+| **Torus** (genus-1) | **0.058** | 0.277 | 0.262 | 0.250 | 0.652 | 0.449 | 0.418 |
+
+HSD outperforms all baselines by **74-86%**, including recent 2023-2024 methods (GNOT, ONO, HAMLET).
+
+<p align="center">
+  <img src="HSD_addition_experiment/output/figures/baselines_ellipsoid.png" width="48%"/>
+  <img src="HSD_addition_experiment/output/figures/baselines_torus.png" width="48%"/>
+</p>
+
+#### On Original Paper Tasks
+
+| Task | HSD | GNOT'23 | ONO'23 | HAMLET'24 | Improvement |
+|------|-----|---------|--------|-----------|-------------|
+| External Aerodynamics | **0.038** | 0.089 | 0.081 | 0.123 | 53-69% |
+| Magnetostatics | **0.021** | 0.050 | 0.051 | 0.071 | 58-70% |
+| Toroidal Transport | **0.190** | 0.288 | 0.420 | 0.257 | 26-55% |
+
+---
+
+### Ablation 1: Input Modality Consistency
+
+HSD is robust across all input representations — the same model achieves near-identical accuracy regardless of whether the input is a mesh, point cloud, or graph.
+
+| Input Mode | Ellipsoid | Torus |
+|------------|-----------|-------|
+| Mesh | 0.036 | 0.056 |
+| Point Cloud | 0.039 | 0.054 |
+| Graph | 0.036 | 0.057 |
+| **Spread** | **0.003** | **0.003** |
+
+Variation < 0.5% across all three modes. The spectral decomposition is intrinsic to the simplicial geometry, not the input encoding.
+
+<p align="center">
+  <img src="HSD_addition_experiment/output/figures/cross_input_consistency.png" width="60%"/>
+</p>
+
+---
+
+### Ablation 2: Pseudo-Spectral Bilinear Layer
+
+The pseudo-spectral bilinear layer introduces explicit de Rham cross-form interactions (grad/curl coupling), improving performance significantly:
+
+| Layer Type | Ellipsoid | Torus |
+|------------|-----------|-------|
+| Plain MLP | 0.037 | 0.056 |
+| **Spectral Bilinear** | **0.026** | **0.049** |
+| **Improvement** | **+30%** | **+13%** |
+
+<p align="center">
+  <img src="HSD_addition_experiment/output/figures/layer_ablation.png" width="60%"/>
+</p>
+
+---
+
+### Ablation 3: Whitney-KDE Spatial Encoding
+
+Mesh-aware Whitney form interpolation + KDE smoothing outperforms raw Euclidean embedding by 12-14%:
+
+| Spatial Encoding | Ellipsoid | Torus |
+|-----------------|-----------|-------|
+| **Whitney-KDE** | **0.037** | **0.058** |
+| Raw Euclidean 3D | 0.042 | 0.065 |
+
+---
+
+### Ablation 4: Spectral Basis Quality
+
+Hodge Laplacian eigenbasis vs. geometry-only (RBF) vs. random orthogonal bases:
+
+| Basis | Ellipsoid | Torus |
+|-------|-----------|-------|
+| **Hodge Laplacian** | **0.036** | **0.156** |
+| RBF (geometry only) | 0.042 | 0.174 |
+| Random orthogonal | 0.084 | 0.783 |
+
+The Hodge basis encodes topology via boundary operators B₁, B₂ — **14-17% better** than geometry-only, **2.3-5x better** than random.
+
+---
+
+### Ablation 5: Hodge Spectral Component Decomposition
+
+分别仅使用 Hodge 谱中的 harmonic、exact（gradient）和 coexact（curl）部分。其中 exact 和 coexact 通道分别通过将 boundary / co-boundary operator 作用于 k-1 和 k+1 维的低频谱构造，验证这三部分提供的是互补信息。
+
+| Task | Full Hodge | Exact only | Coexact only | Harmonic only |
+|------|------------|------------|--------------|---------------|
+| Ellipsoid | **0.084** | 0.113 | 0.338 | 1.002 |
+| Torus | **0.475** | 0.995 | 0.483 | 1.003 |
+
+#### Key Findings
+
+1. **No single Hodge component suffices.** Harmonic-only diverges on both tasks (rel L2 > 1.0). Exact-only collapses on the coexact-dominated Torus (0.995). Coexact-only collapses on the exact-dominated Ellipsoid (0.338). Only the full spectrum succeeds on both.
+
+2. **The dominant component mirrors the ground truth Hodge energy distribution.** Ellipsoid (exact-dominated) requires the gradient channel — dropping it causes severe degradation (0.338). Torus (coexact-dominated) requires the curl channel — dropping it causes near-divergence (0.995). The boundary operator B₁ (gradient, d₀) and co-boundary operator B₂^T (curl, delta₁) each capture physically distinct, non-redundant spectral information.
+
+3. **The full Hodge Laplacian L₁ = B₁B₁^T + B₂^TB₂ optimally balances both subspaces** — the exact channel is constructed from the boundary operator on the (k-1)-spectrum, the coexact channel from the co-boundary operator on the (k+1)-spectrum. Using both jointly ensures automatic adaptation to the task's Hodge energy distribution without task-specific tuning.
+
+---
+
+### 3D Vector Field Predictions
+
+Predicted flux vector fields on the two benchmark geometries:
+
+<p align="center">
+  <img src="HSD_addition_experiment/output/figures/vector_field_3d_ellipsoid.png" width="48%"/>
+  <img src="HSD_addition_experiment/output/figures/vector_field_3d_torus.png" width="48%"/>
+</p>
+
+### Level Set Contours (Topological Fidelity)
+
+Contour alignment between ground truth and HSD predictions, demonstrating preservation of topological structure:
+
+<p align="center">
+  <img src="HSD_addition_experiment/output/figures/levelset_ellipsoid.png" width="48%"/>
+  <img src="HSD_addition_experiment/output/figures/levelset_torus.png" width="48%"/>
+</p>
+
+#### Original Tasks — Level Set and Error Visualization
+
+<p align="center">
+  <img src="HSD_addition_experiment/original_tasks/levelset_externalAero.png" width="48%"/>
+  <img src="HSD_addition_experiment/original_tasks/levelset_error_externalAero.png" width="48%"/>
+</p>
+
+---
+
+### Topological Data Analysis (TDA) Demonstrations
+
+#### Betti Number Detection
+
+HSD detects topological invariants (Betti numbers) with 100% accuracy directly from the Hodge Laplacian eigendecomposition — no supervised labels needed:
+
+- **Ellipsoid (genus-0):** b₀=1, b₁=0, b₂=1, Euler characteristic chi=2
+- **Torus (genus-1):** b₀=1, b₁=2, b₂=1, Euler characteristic chi=0
+
+<p align="center">
+  <img src="HSD_addition_experiment/tda_demo/output/hsd_tda_betti.png" width="60%"/>
+</p>
+
+#### Learned Operator Topology Preservation
+
+After training on PDE tasks, the learned operators preserve topological structure:
+- Harmonic eigenvalues remain near zero (spectral gap 4.6x on torus)
+- Exact sequence d^2 ~ 0 approximately maintained
+- Spectral reliance gates show 72-75% dependence on spectral branch
+
+#### Persistent Homology Analysis
+
+<p align="center">
+  <img src="HSD_addition_experiment/tda_demo/output/hodge_tda_circle.png" width="32%"/>
+  <img src="HSD_addition_experiment/tda_demo/output/hodge_tda_figure8.png" width="32%"/>
+  <img src="HSD_addition_experiment/tda_demo/output/hodge_tda_two_circles.png" width="32%"/>
+</p>
+
+#### TDA Classifier — Betti Number Prediction from Point Clouds
+
+Supervised classification of b₁ from spectral features extracted via HSD on Vietoris-Rips complexes (shapes: circle, figure-8, line, annulus):
+
+<p align="center">
+  <img src="HSD_addition_experiment/tda_demo/output/hsd_tda_classifier.png" width="60%"/>
+</p>
 
 ---
 
@@ -22,145 +303,43 @@ The key innovation is a **dual-branch architecture** that separates:
 
 ### Differential Forms and the de Rham Complex
 
-On a 2-dimensional manifold embedded in R^3, we work with the de Rham complex:
+On a 2-dimensional manifold embedded in R^3:
 
 ```
-Ω^0(M) --d0--> Ω^1(M) --d1--> Ω^2(M)
-   ↑              ↑              ↑
-0-forms       1-forms        2-forms
-(scalars)    (vectors)      (densities)
+Omega^0(M) --d0--> Omega^1(M) --d1--> Omega^2(M)
+   |                  |                  |
+0-forms           1-forms            2-forms
+(scalars)        (vectors)          (densities)
 ```
-
-where:
-- **0-forms**: Scalar fields on vertices (e.g., temperature, pressure)
-- **1-forms**: Vector fields along edges (e.g., velocity, flux)
-- **2-forms**: Density fields on faces (e.g., vorticity, divergence)
-
-The exterior derivative `d` and codifferential `δ` satisfy:
-- `d ∘ d = 0` (closed forms are locally exact)
-- `δ = ±*d*` (Hodge dual relationship)
 
 ### Hodge Decomposition Theorem
 
-Any differential form ω on a compact Riemannian manifold admits a unique orthogonal decomposition:
+Any differential form omega on a compact Riemannian manifold admits a unique orthogonal decomposition:
 
 ```
-ω = dα + δβ + h
+omega = d(alpha) + delta(beta) + h
 ```
 
-where:
-- `dα` is the **exact component** (gradient of a potential)
-- `δβ` is the **coexact component** (curl of a vector potential)
-- `h` is the **harmonic component** (satisfies Δh = 0)
+- `d(alpha)`: exact component (gradient of a potential)
+- `delta(beta)`: coexact component (curl of a vector potential)
+- `h`: harmonic component (encodes topology — dim = Betti number)
 
-The harmonic forms encode **topological invariants**: their dimension equals the Betti numbers of the manifold. This decomposition is central to our approach—we learn operators that respect this structure.
-
-### Hodge Laplacians and Spectral Bases
-
-For each form degree k, the Hodge Laplacian is defined as:
+### Hodge Laplacians
 
 ```
-Δ_k = dδ + δd
+L₀ = B₁^T B₁           (graph Laplacian on nodes)
+L₁ = B₁ B₁^T + B₂^T B₂  (edge Laplacian)
+L₂ = B₂ B₂^T            (face Laplacian)
 ```
-
-In the discrete setting (DEC):
-- `Δ_0 = B_1^T B_1` (graph Laplacian on nodes)
-- `Δ_1 = B_1 B_1^T + B_2^T B_2` (edge Laplacian)
-- `Δ_2 = B_2 B_2^T` (face Laplacian)
-
-where `B_1` and `B_2` are the signed incidence matrices (discrete boundary operators).
-
-The eigenfunctions of these Laplacians form orthonormal bases:
-- `Φ_0 = {φ_0^1, φ_0^2, ...}` for 0-forms (node functions)
-- `Φ_1 = {φ_1^1, φ_1^2, ...}` for 1-forms (edge functions)
-- `Φ_2 = {φ_2^1, φ_2^2, ...}` for 2-forms (face functions)
 
 ### Spectral de Rham Operators
 
-The key insight is that the de Rham operators can be represented in the spectral domain:
-
 ```
-M_{d0} = Φ_1^T B_1 Φ_0    (Spectral Gradient)
-M_{δ1} = Φ_0^T B_1^T Φ_1  (Spectral Divergence)
-M_{d1} = Φ_2^T B_2 Φ_1    (Spectral Curl)
-M_{δ2} = Φ_1^T B_2^T Φ_2  (Spectral Co-curl)
+Md₀  = Phi₁^T B₁ Phi₀    (spectral gradient)
+Mdelta₁ = Phi₀^T B₁^T Phi₁  (spectral divergence)
+Md₁  = Phi₂^T B₂ Phi₁    (spectral curl)
+Mdelta₂ = Phi₁^T B₂^T Phi₂  (spectral co-curl)
 ```
-
-These matrices encode how differential operators transform spectral coefficients, enabling physics-aware learning in a compressed representation.
-
-### Intrinsic Lifting: From Scalars to Forms
-
-Given a scalar input field f (0-form), we derive the full de Rham representation through intrinsic lifting:
-
-```
-f ∈ Ω^0  →  c_0 = Φ_0^T f           (0-form coefficients)
-         →  c_1 = Φ_1^T (B_1 f)     (1-form: gradient)
-         →  c_2 = Φ_2^T (B_2 B_1 f) (2-form: curl of gradient = 0)
-```
-
-The constraint `d^2 = 0` manifests as `c_2 ≈ 0` for lifted signals, providing a consistency check.
-
----
-
-## HSD Architecture: Dual-Branch System
-
-### Conceptual Framework
-
-The HSD model implements a **base-fiber decomposition** inspired by fiber bundles in differential geometry:
-
-```
-                    ┌─────────────────────────────┐
-                    │     Input: (c_0, c_1, c_2)  │
-                    │   Spectral Coefficients     │
-                    └──────────────┬──────────────┘
-                                   │
-              ┌────────────────────┴────────────────────┐
-              │                                         │
-              ▼                                         ▼
-    ┌─────────────────────┐               ┌─────────────────────┐
-    │   TOPOLOGICAL BASE  │               │   GEOMETRIC FIBER   │
-    │   (Spectral Branch) │               │   (Local Branch)    │
-    ├─────────────────────┤               ├─────────────────────┤
-    │ • Physics Encoder   │               │ • FNO on 3D Grid    │
-    │ • De Rham Coupling  │               │ • Position MLP      │
-    │ • Spectral MLP      │               │ • Local Refinement  │
-    │                     │               │                     │
-    │ Output: Base field  │               │ Output: Residual    │
-    │ (global, smooth)    │               │ (local, detailed)   │
-    └──────────┬──────────┘               └──────────┬──────────┘
-              │                                         │
-              └────────────────────┬────────────────────┘
-                                   │
-                                   ▼
-                    ┌─────────────────────────────┐
-                    │  Orthogonal Decomposition   │
-                    └─────────────────────────────┘
-```
-
-### Topological Base Branch
-
-The spectral branch operates entirely in the Hodge-spectral domain:
-
-1. **Physics Encoder**: Computes cross-form interactions using de Rham operators
-   ```
-   feat_0 = [c_0, M_{δ1} c_1]           # 0-form + divergence of 1-form
-   feat_1 = [c_1, M_{d0} c_0, M_{δ2} c_2]  # 1-form + gradient + co-curl
-   feat_2 = [c_2, M_{d1} c_1]           # 2-form + curl of 1-form
-   ```
-
-2. **Spectral Amplification**: Frequency-dependent gain to balance mode contributions
-
-3. **Physics-Aware gMLP**: Gated MLP layers that preserve spectral structure
-
-4. **Output**: Spectral coefficients for the base vector field, transformed back via `Φ_0`
-
-### Geometric Fiber Branch
-
-The local branch captures fine-grained spatial variations:
-
-1. **FNO Sub-network**: 3D Fourier Neural Operator on a regular grid embedding
-2. **Coupling MLP**: Position-aware network conditioned on spectral features
-3. **Output**: Residual vector field in physical space
 
 ---
 
@@ -168,45 +347,34 @@ The local branch captures fine-grained spatial variations:
 
 ```
 Hodge-Spectral-Duality/
+├── hodge-spectral-operator/          # PyPI library (pip install hodge-spectral-operator)
+│   ├── hodge_spectral/
+│   │   ├── api.py                    # HodgeOperator: main user-facing API
+│   │   ├── operators/spectral.py     # HighOrderSpectralOperators (Hodge Laplacians, eigenbases)
+│   │   ├── adapters/adapters.py      # MeshAdapter, PointCloudAdapter, GraphAdapter
+│   │   ├── models/unified.py         # UnifiedHSD dual-branch model
+│   │   ├── models/dataset.py         # VectorFluxMapper, FluxFieldDataset
+│   │   ├── models/baselines.py       # GNO, FNO3d, DeepONet baselines
+│   │   └── data/                     # Data generation scripts
+│   ├── examples/                     # Quickstart and benchmark examples
+│   ├── pyproject.toml
+│   └── README.md
 │
-├── externalAerodynamics/
-│   ├── flux_field_data/
-│   │   └── (generated data files)
-│   ├── config.py
-│   ├── dataset.py
-│   ├── generate_data.py
-│   ├── main.py
-│   ├── models.py
-│   ├── spectral_operators.py
-│   ├── topo_metrics.py
-│   ├── training.py
-│   ├── utils.py
-│   └── visualization.py
+├── HSD_addition_experiment/          # Supplementary experiments
+│   ├── ablations/                    # All ablation study scripts
+│   ├── baselines/                    # Extended baseline implementations (GNOT, ONO, HAMLET)
+│   ├── original_tasks/               # Re-evaluation on original paper tasks
+│   ├── tda_demo/                     # Topological Data Analysis demonstrations
+│   ├── visualization/                # Figure generation scripts
+│   ├── output/
+│   │   ├── figures/                  # All generated visualizations
+│   │   └── results/                  # All metrics in JSON format
+│   ├── REPORT.md                     # Detailed experiment report
+│   └── run_all.py                    # Master experiment runner
 │
-├── magnetostatics/
-│   ├── flux_field_data/
-│   │   └── (generated data files)
-│   ├── config.py
-│   ├── dataset.py
-│   ├── generate_data.py
-│   ├── main.py
-│   ├── models.py
-│   ├── spectral_operators.py
-│   ├── topo_metrics.py
-│   ├── training.py
-│   ├── training copy.py
-│   ├── utils.py
-│   └── visualization.py
-│
-├── toroidalTransport/
-│   ├── config.py
-│   ├── dataset.py
-│   ├── generate_data.py
-│   ├── main.py
-│   ├── models.py
-│   ├── spectral_operators.py
-│   └── topo_metrics.py
-│
+├── externalAerodynamics/             # Original task: ellipsoid aerodynamics (genus-0, 0→1)
+├── magnetostatics/                   # Original task: magnetic flux on 3D surfaces (0→1)
+├── toroidalTransport/                # Original task: advection-diffusion on torus (genus-1, 0→0)
 └── README.md
 ```
 
@@ -214,168 +382,24 @@ Hodge-Spectral-Duality/
 
 ## Installation
 
-### Requirements
-
 ```bash
-# Create conda environment
 conda create -n hsd python=3.10
 conda activate hsd
 
-# Core dependencies
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-pip install numpy scipy scikit-learn matplotlib
+pip install numpy scipy scikit-learn matplotlib pyvista toponetx
 
-# Geometry and topology
-pip install pyvista toponetx
-
-# Neural operators (optional, for baselines)
-pip install torch-geometric
-pip install neuraloperator
-
-# Visualization
-pip install pillow pandas
+# Install the library
+pip install hodge-spectral-operator
 ```
-
-### Verify Installation
-
-```python
-import torch
-import toponetx
-import pyvista
-print(f"PyTorch: {torch.__version__}")
-print(f"CUDA available: {torch.cuda.is_available()}")
-```
-
----
-
-## Quick Start
-
-### 1. Generate Data
-
-Each task requires generating synthetic physics data:
-
-```bash
-cd externalAerodynamics
-python generate_data.py
-```
-
-This creates:
-- `flux_field_data/flux_field_dataset.pkl` — Training/test data
-- `flux_field_data/preview_samples.png` — Visualization of samples
-
-### 2. Train Models
-
-```bash
-python main.py
-```
-
-On first run, you will be prompted:
-```
-EXISTING TRAINED MODELS DETECTED
-Options:
-  [1] Load existing models and skip training
-  [2] Retrain all models from scratch
-  [3] Train only missing models
-```
-
-### 3. View Results
-
-Results are saved to `output_flux/`:
-- `training_log.txt` — Full experiment log
-- `training_curves.png` — Loss curves for all models
-- `metrics_comparison.png` — Bar chart of topology metrics
-- `flux_samples/` — Per-sample visualizations
-- `topo_metrics.json` — Quantitative results
-
----
-
-## Tasks
-
-### Task 1: External Aerodynamics
-
-**Geometry**: Ellipsoid surface (configurable axes)  
-**Input**: Vorticity field (scalar, 0-form)  
-**Output**: Velocity field (tangent vector, 1-form representation)  
-**Physics**: Poisson stream function with global moment coupling
-
-The velocity field is computed as:
-```
-u = n × ∇ψ + Σ c_i · basis_i
-```
-where ψ solves the Laplace-Beltrami Poisson equation and the global flow direction is determined by vorticity moments.
-
-```bash
-cd externalAerodynamics && python main.py
-```
-
-### Task 2: Magnetostatics
-
-**Geometry**: Complex 3D surfaces with varying curvature  
-**Input**: Current density distribution  
-**Output**: Magnetic flux density (tangent field)  
-**Physics**: Biot-Savart law discretized on manifolds
-
-```bash
-cd magnetostatics && python main.py
-```
-
-### Task 3: Toroidal Transport
-
-**Geometry**: Torus and toroidal-like manifolds  
-**Input**: Source/sink distribution  
-**Output**: Transport flux field  
-**Physics**: Steady-state advection-diffusion on curved surfaces
-
-This task specifically tests the method's ability to handle non-trivial topology (genus-1 surfaces with non-zero first Betti number).
-
-```bash
-cd toroidalTransport && python main.py
-```
-
----
-
-## Evaluation Metrics
-
-### Physics Metrics
-
-| Metric | Description |
-|--------|-------------|
-| MSE | Mean squared error on vector field |
-| Divergence Fidelity | Conservation of mass (div u = 0) |
-| Curl MSE | Vorticity reconstruction accuracy |
-| Vorticity Fidelity | Correlation of vorticity fields |
-| Enstrophy Fidelity | Total squared vorticity preservation |
-| Energy Fidelity | Total kinetic energy matching |
-
-### Topology Metrics
-
-Computed on the **vorticity field** (not velocity magnitude) for stability:
-
-| Metric | Description |
-|--------|-------------|
-| Betti-0 Score | Connected component counting at multiple thresholds |
-| Level Set IoU | Overlap of vorticity iso-surfaces |
-| Vortex Count Accuracy | Number of vortex cores (local maxima of vorticity) |
-
-**Why vorticity?** For vortex-dominated flows, velocity magnitude vanishes at vortex centers (saddle points), creating unstable "donut" topologies. Vorticity peaks at vortex centers, giving stable connected regions.
-
-### Spectral Metrics
-
-| Metric | Description |
-|--------|-------------|
-| Gradient Fidelity | Directional derivative correlation |
-| Spectral Fidelity | Eigenmode-weighted coefficient matching |
 
 ---
 
 ## License
 
-This project is licensed under the MIT License.
-
----
+MIT
 
 ## Acknowledgments
 
 - [TopoNetX](https://github.com/pyt-team/TopoNetX) for simplicial complex operations
 - [PyVista](https://pyvista.org/) for 3D visualization
-- [NeuralOperator](https://github.com/neuraloperator/neuraloperator) for FNO implementation

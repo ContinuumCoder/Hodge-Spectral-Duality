@@ -536,8 +536,7 @@ def visualize_multiple_samples_with_error(pts, faces, X_input, Y_gt, predictions
             error = np.abs(pred[idx] - Y_gt[idx])
             all_errors.append(error)
         
-        # Global error range: [0, max_error_across_all_models]
-        # This ensures the same color represents the same error value across models
+        # Global error range for consistent colormap across models
         global_max_err = max([e.max() for e in all_errors]) if all_errors else 1.0
         error_clim = [0, global_max_err]
         

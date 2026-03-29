@@ -1,0 +1,90 @@
+{
+  "Ellipsoid": {
+    "Full Hodge": {
+      "rel_l2": 0.1082,
+      "exact_err": 0.1248,
+      "coexact_err": 0.4441,
+      "harmonic_err": 0.1329
+    },
+    "Harmonic + Exact": {
+      "rel_l2": 0.1201,
+      "exact_err": 0.1578,
+      "coexact_err": 0.4062,
+      "harmonic_err": 0.1663
+    },
+    "Harmonic + Coexact": {
+      "rel_l2": 0.4141,
+      "exact_err": 0.4399,
+      "coexact_err": 0.6781,
+      "harmonic_err": 0.4442
+    },
+    "Exact + Coexact": {
+      "rel_l2": 0.1082,
+      "exact_err": 0.1208,
+      "coexact_err": 0.4303,
+      "harmonic_err": 0.1285
+    },
+    "Harmonic only": {
+      "rel_l2": 1.0003,
+      "exact_err": 0.9961,
+      "coexact_err": 1.0012,
+      "harmonic_err": 0.9957
+    },
+    "Exact only": {
+      "rel_l2": 0.1207,
+      "exact_err": 0.1608,
+      "coexact_err": 0.4154,
+      "harmonic_err": 0.1691
+    },
+    "Coexact only": {
+      "rel_l2": 0.4147,
+      "exact_err": 0.4922,
+      "coexact_err": 0.6874,
+      "harmonic_err": 0.4951
+    }
+  },
+  "Torus": {
+    "Full Hodge": {
+      "rel_l2": 0.6876,
+      "exact_err": 0.6596,
+      "coexact_err": 0.5801,
+      "harmonic_err": 2.9758
+    },
+    "Harmonic + Exact": {
+      "rel_l2": 0.9996,
+      "exact_err": 1.001,
+      "coexact_err": 1.0014,
+      "harmonic_err": 1.6213
+    },
+    "Harmonic + Coexact": {
+      "rel_l2": 0.6843,
+      "exact_err": 0.6573,
+      "coexact_err": 0.5746,
+      "harmonic_err": 2.4994
+    },
+    "Exact + Coexact": {
+      "rel_l2": 0.6876,
+      "exact_err": 0.6671,
+      "coexact_err": 0.5862,
+      "harmonic_err": 1.7979
+    },
+    "Harmonic only": {
+      "rel_l2": 1.0,
+      "exact_err": 1.0006,
+      "coexact_err": 1.0008,
+      "harmonic_err": 1.4594
+    },
+    "Exact only": {
+      "rel_l2": 1.0002,
+      "exact_err": 0.9999,
+      "coexact_err": 1.0001,
+      "harmonic_err": 1.5342
+    },
+    "Coexact only": {
+      "rel_l2": 0.6847,
+      "exact_err": 0.658,
+      "coexact_err": 0.5773,
+      "harmonic_err": 2.2654
+    }
+  }
+}

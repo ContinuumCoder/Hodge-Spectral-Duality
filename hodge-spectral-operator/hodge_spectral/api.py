@@ -56,23 +56,64 @@ class HodgeOperator:
       - Neural gating + commutator
     """
 
-    def __init__(self, points, faces, task="0to1", k=64,
-                 hidden_dims=(256, 192), res_hidden=128,
-                 device=None, heat_kernel_laplacian=None):
+    def __init__(self, points, faces, task="0to1",
+                 # Spectral decomposition
+                 k=64,
+                 normalize_laplacian=True,
+                 # Spectral branch architecture
+                 hidden_dims=(256, 192),
+                 dropout=0.05,
+                 # Spatial branch architecture
+                 res_hidden=128,
+                 res_dropout=0.1,
+                 # Training defaults (can also override in .fit())
+                 default_lr=3e-3,
+                 default_epochs=100,
+                 default_patience=25,
+                 # Device
+                 device=None,
+                 # Advanced
+                 heat_kernel_laplacian=None):
         """
+        Hodge Spectral Operator.
+
         Args:
             points: (N, D) node coordinates
             faces: (M, 3) triangle indices
-            task: "0to0", "0to1", "1to0", "1to1", "0to2", etc.
-            k: number of spectral modes per form
-            hidden_dims: MLP hidden layer sizes
-            res_hidden: spatial branch hidden size
-            device: 'cuda' or 'cpu'
-            heat_kernel_laplacian: optional precomputed L0 (for point cloud)
+            task: differential form task, e.g. "0to0", "0to1", "1to0", "1to1", "0to2"
+                  0 = scalar (nodes), 1 = vector/flux (edges), 2 = density (faces)
+
+            --- Spectral decomposition ---
+            k: number of eigenmodes per form (higher = more expressive, slower)
+            normalize_laplacian: apply symmetric normalization D^{-1/2}LD^{-1/2}
+
+            --- Spectral branch (Hodge-aware MLP) ---
+            hidden_dims: tuple of hidden layer sizes. More/larger = more capacity.
+                         e.g. (128,) for lightweight, (512, 256) for high capacity.
+            dropout: dropout rate in spectral MLP layers
+
+            --- Spatial branch (residual correction) ---
+            res_hidden: hidden size of spatial encoder/decoder.
+                        Larger = better high-frequency capture.
+            res_dropout: dropout in spatial branch
+
+            --- Training defaults ---
+            default_lr: learning rate (override in .fit())
+            default_epochs: max epochs (override in .fit())
+            default_patience: early stopping patience (override in .fit())
+
+            --- Device ---
+            device: 'cuda', 'cpu', or None (auto-detect)
+
+            --- Advanced ---
+            heat_kernel_laplacian: precomputed (N,N) heat kernel Laplacian for L0.
+                                  Used by PointCloudAdapter internally.
         """
         self.device = device or ('cuda' if torch.cuda.is_available() else 'cpu')
         self.input_form, self.output_form = _parse_task(task)
         self.k = k
+        self._dropout = dropout
+        self._res_dropout = res_dropout
         self.points = points.astype(np.float64)
         self.faces = faces.astype(np.int64)
         self.n_nodes = len(points)
@@ -114,6 +155,9 @@ class HodgeOperator:
         self._trained = False
         self.x_scale = None
         self.y_scale = None
+        self._default_lr = default_lr
+        self._default_epochs = default_epochs
+        self._default_patience = default_patience
 
     @classmethod
     def from_mesh(cls, points, faces, **kwargs):
@@ -147,21 +191,25 @@ class HodgeOperator:
         c2 = np.zeros((len(X_norm), self.k), dtype=np.float32)
         return c0, c1, c2
 
-    def fit(self, X_train, Y_train, epochs=100, lr=3e-3, batch_size=64,
-            val_ratio=0.15, patience=25, verbose=True):
+    def fit(self, X_train, Y_train, epochs=None, lr=None, batch_size=64,
+            val_ratio=0.15, patience=None, weight_decay=1e-5, verbose=True):
         """
         Train the model.
 
         Args:
             X_train: input data. Shape depends on input_form.
             Y_train: target data. Shape depends on output_form.
-            epochs: max training epochs
-            lr: learning rate
+            epochs: max training epochs (default: from constructor)
+            lr: learning rate (default: from constructor)
             batch_size: batch size
             val_ratio: fraction held out for validation
-            patience: early stopping patience
+            patience: early stopping patience (default: from constructor)
+            weight_decay: AdamW weight decay
             verbose: print training progress
         """
+        epochs = epochs or self._default_epochs
+        lr = lr or self._default_lr
+        patience = patience or self._default_patience
         X_train = np.asarray(X_train, dtype=np.float64)
         Y_train = np.asarray(Y_train, dtype=np.float64)
 

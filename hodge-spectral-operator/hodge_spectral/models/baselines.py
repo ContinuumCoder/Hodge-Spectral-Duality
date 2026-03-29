@@ -1000,7 +1000,6 @@ class HSDDualBranch(nn.Module):
         vec_spatial = self.spatial_branch(x_spatial, spectral_latent)  # (B, N, 3)
 
         # Orthogonal decomposition: remove spectral component from residual
-        # This ensures the spatial branch only adds what spectral can't capture
         res_flat = vec_spatial.permute(0, 2, 1)  # (B, 3, N)
         res_proj = torch.matmul(torch.matmul(res_flat, self.Phi0), self.Phi0.t())  # project onto Phi0 span
         vec_orthogonal = vec_spatial - res_proj.permute(0, 2, 1)  # (B, N, 3)

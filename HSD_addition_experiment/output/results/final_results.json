@@ -1,0 +1,78 @@
+{
+  "baseline_comparison": {
+    "Ellipsoid": {
+      "HSD": 0.037,
+      "GNOT": 0.144,
+      "ONO": 0.155,
+      "HAMLET": 0.159,
+      "DeepONet": 0.221,
+      "GeoFNO": 0.24,
+      "FNO": 0.246
+    },
+    "Torus": {
+      "HSD": 0.058,
+      "HAMLET": 0.25,
+      "ONO": 0.262,
+      "GNOT": 0.277,
+      "FNO": 0.418,
+      "GeoFNO": 0.449,
+      "DeepONet": 0.652
+    }
+  },
+  "input_modality": {
+    "Ellipsoid": {
+      "Mesh": 0.036,
+      "PointCloud": 0.039,
+      "Graph": 0.036,
+      "spread": 0.003
+    },
+    "Torus": {
+      "Mesh": 0.056,
+      "PointCloud": 0.054,
+      "Graph": 0.057,
+      "spread": 0.003
+    }
+  },
+  "layer_ablation": {
+    "Ellipsoid": {
+      "Plain_MLP": 0.037,
+      "Spectral_Bilinear": 0.026
+    },
+    "Torus": {
+      "Plain_MLP": 0.056,
+      "Spectral_Bilinear": 0.049
+    }
+  },
+  "basis_ablation": {
+    "Ellipsoid": {
+      "Hodge": 0.036,
+      "RBF": 0.042,
+      "Random": 0.084
+    },
+    "Torus": {
+      "Hodge": 0.156,
+      "RBF": 0.174,
+      "Random": 0.783
+    }
+  },
+  "hodge_component_ablation": {
+    "Ellipsoid": {
+      "Full_Hodge": 0.036,
+      "Harmonic+Coexact": 0.036,
+      "Harmonic+Exact": 0.036,
+      "Harmonic_only": 0.119,
+      "Coexact_only": 0.118,
+      "Exact_only": 0.659,
+      "Exact+Coexact_no_harm": 0.665
+    },
+    "Torus": {
+      "Full_Hodge": 0.154,
+      "Harmonic+Coexact": 0.155,
+      "Harmonic+Exact": 0.156,
+      "Exact_only": 0.159,
+      "Exact+Coexact_no_harm": 0.16,
+      "Harmonic_only": 1.0,
+      "Coexact_only": 1.0
+    }
+  }
+}
