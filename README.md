@@ -4,7 +4,7 @@ A physics-informed neural operator framework for learning mappings between diffe
 
 ---
 
-## `hodge-spectral-operator` — PyPI Library
+## `hodge-spectral-operator` — PyPI Library (publish after double-blind peer review)
 
 We provide a **unified, one-line-call** Python library that wraps the entire HSD pipeline into a clean API. It supports **any geometric input** (mesh, point cloud, graph) and **any differential form task** (0-form, 1-form, 2-form mappings).
 
