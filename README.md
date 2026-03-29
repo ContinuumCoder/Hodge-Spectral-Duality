@@ -1,4 +1,4 @@
-# Hodge-Spectral Duality (HSD)
+
 
 A physics-informed neural operator framework for learning mappings between differential forms on manifolds, leveraging the Hodge decomposition and discrete exterior calculus.
 
